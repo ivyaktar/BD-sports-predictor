@@ -24,9 +24,10 @@ Overall Elo, Elo by competition tier (friendly / qualifier / regional / major), 
 ```bash
 git clone https://github.com/ivyaktar/bd-sports-predictor.git
 cd bd-sports-predictor
-python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
+python3 -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
+macOS: XGBoost needs OpenMP, so run `brew install libomp` once.
 
 ## Usage
 ```bash
@@ -45,13 +46,22 @@ python sports_predictor.py --sport cricket  --gender male   --predict Bangladesh
 | Category | Test matches | Elo only (acc / log loss) | XGBoost (acc / log loss) |
 |---|---|---|---|
 | Men | 3,034 | 60.2% / 0.869 | 60.5% / 0.864 |
-| Women | 1,938 | 65.6% / 0.800 | 66.3% / 0.791 |
+| Women | 1,938 | 65.6% / 0.800 | 67.0% / 0.788 |
 
-Tree models add only a small improvement over Elo. Bangladesh-only test sets are tiny (21 men's, 20 women's matches) so they are not reported as a headline number. Cricket results: add yours after running.
+Tree models add only a small improvement over Elo. Bangladesh-only test sets are tiny (21 men's, 20 women's matches) so they are not reported as a headline number.
+
+## Results (cricket)
+
+## Results (cricket, tested on matches from 2025 onward; ODI + T20I + Test combined; 2 classes: win / loss)
+| Category | Test matches | Elo only (acc / log loss) | XGBoost (acc / log loss) |
+|---|---|---|---|
+| Men | 1,255 | 68.5% / 0.590 | 70.8% / 0.549 |
+| Women | 918 | 71.2% / 0.556 | 76.1% / 0.499 |
+
+Ties and no-results are dropped, so there is no draw class. Bangladesh-only test sets are small (64 men's, 48 women's matches): men 59.4% accuracy, women 87.5%. These are too noisy to treat as headline numbers.
 
 ## Limitations
 International (senior national team) matches only; no club, youth or Bangladesh Premier League data (no open dataset found). The women's dataset is incomplete (many friendlies are missing). No player-level or squad data, no pitch/weather. Small samples for Bangladesh-only evaluation.
 
 ## Acknowledgements
 Inspired by two tennis-prediction videos (including the creator's correction about Elo data leakage). Data by Cricsheet and martj42.
-# BD-sports-predictor
