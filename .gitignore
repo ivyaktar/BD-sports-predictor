@@ -4,3 +4,7 @@ __pycache__/
 .ipynb_checkpoints/
 .venv/
 *_results.txt
+backup-*/
+checkpoint-*/
+
+*.log

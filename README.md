@@ -1,67 +1,151 @@
 # Bangladesh Sports Match Predictor
 
-Predicts match outcomes for **Bangladesh football (men and women)** and **cricket (ODI, T20I, Test)** using Elo ratings and tree-based models (random forest, XGBoost). **Men and women are modelled completely separately**: separate Elo pools, separate tuned settings, separate models and result tables.
+Predict Bangladesh senior national-team outcomes using chronological
+Elo features, logistic regression, random forests and XGBoost.
 
-## Why this project is leak-safe
-Many tutorials get inflated accuracy by accidentally using information from *after* a match (e.g. post-match Elo). Here:
-- Every feature for a match is computed only from **earlier** matches, then the state is updated with the result.
-- Train / validation / test are split **by date**, never randomly.
-- A built-in leak test runs on every execution: it flips one match result and checks that its features and all earlier ones do not change.
+Inspired by these videos and the creator's Elo-leakage correction:
+- https://www.youtube.com/watch?v=LkJpNLIaeVk
+- https://www.youtube.com/watch?v=N4JDlSTMOck
 
-## Data
-| Sport | Source |
-|---|---|
-| Cricket | [Cricsheet](https://cricsheet.org) ball-by-ball JSON |
-| Football (men) | [martj42/international_results](https://github.com/martj42/international_results) |
-| Football (women) | [martj42/womens-international-results](https://github.com/martj42/womens-international-results) |
+## Supported tasks
 
-Data is downloaded by the script (`--fetch`) and is not stored in this repo.
+- Men's and women's football: win/draw/loss, including extra time
+  but excluding penalty shootouts.
+- Men's and women's ODI/T20I: eventual winner, including super overs
+  and bowl-outs. No-results and unresolved ties are excluded.
+- Men's Tests: win/draw/loss, retaining draws.
+- Women's Tests: insufficient data; only 24 matches are available.
 
-## Features
-Overall Elo, Elo by competition tier (friendly / qualifier / regional / major), last 5/10 form, head-to-head, venue record, experience, home advantage, optional toss (cricket). Elo updates are weighted by competition importance and goal margin; the Elo K-scale and home advantage are tuned on the validation set only.
+Genders and cricket tasks have separate models and rating pools.
+Limited-overs probabilities are conditional on a decisive result.
 
 ## Setup
-```bash
-git clone https://github.com/ivyaktar/bd-sports-predictor.git
-cd bd-sports-predictor
-python3 -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-```
-macOS: XGBoost needs OpenMP, so run `brew install libomp` once.
 
-## Usage
-```bash
-# train + evaluate (downloads data first time)
-python sports_predictor.py --sport cricket --fetch --formats ODI T20I Test
-python sports_predictor.py --sport football --fetch                 # men + women, separate models
-python sports_predictor.py --sport football --gender female         # one category only
+    python3 -m venv .venv
+    source .venv/bin/activate
+    pip install -r requirements.txt
 
-# predict a match (choose the category)
-python sports_predictor.py --sport football --gender male   --predict Bangladesh Nepal --fmt regional
-python sports_predictor.py --sport football --gender female --predict Bangladesh Nepal --fmt regional
-python sports_predictor.py --sport cricket  --gender male   --predict Bangladesh India --fmt ODI
-```
+On macOS, XGBoost may also require: brew install libomp
 
-## Results (football, tested on matches from 2024 onward; 3 classes: win / draw / loss)
-| Category | Test matches | Elo only (acc / log loss) | XGBoost (acc / log loss) |
-|---|---|---|---|
-| Men | 3,034 | 60.2% / 0.869 | 60.5% / 0.864 |
-| Women | 1,938 | 65.6% / 0.800 | 67.0% / 0.788 |
+Run commands from the project folder.
 
-Tree models add only a small improvement over Elo. Bangladesh-only test sets are tiny (21 men's, 20 women's matches) so they are not reported as a headline number.
+## Training
 
-## Results (cricket)
+    python sports_predictor.py --sport cricket --gender male --cricket-task limited
+    python sports_predictor.py --sport cricket --gender female --cricket-task limited
+    python sports_predictor.py --sport cricket --gender male --cricket-task test
+    python sports_predictor.py --sport football --gender male
+    python sports_predictor.py --sport football --gender female
 
-## Results (cricket, tested on matches from 2025 onward; ODI + T20I + Test combined; 2 classes: win / loss)
-| Category | Test matches | Elo only (acc / log loss) | XGBoost (acc / log loss) |
-|---|---|---|---|
-| Men | 1,255 | 68.5% / 0.590 | 70.8% / 0.549 |
-| Women | 918 | 71.2% / 0.556 | 76.1% / 0.499 |
+Add --fetch to download source data. Downloads do not guarantee complete
+coverage through today. Cricket requires cricket_venue_hosts_expanded.csv.
 
-Ties and no-results are dropped, so there is no draw class. Bangladesh-only test sets are small (64 men's, 48 women's matches): men 59.4% accuracy, women 87.5%. These are too noisy to treat as headline numbers.
+Model families are selected by validation log loss. The selected model is
+then refitted on available history for deployment. Reported test results
+belong to the held-out evaluation model, not the full-history refit.
 
-## Limitations
-International (senior national team) matches only; no club, youth or Bangladesh Premier League data (no open dataset found). The women's dataset is incomplete (many friendlies are missing). No player-level or squad data, no pitch/weather. Small samples for Bangladesh-only evaluation.
+## Predictions
 
-## Acknowledgements
-Inspired by two tennis-prediction videos (including the creator's correction about Elo data leakage). Data by Cricsheet and martj42.
+Cricket example:
+
+    python sports_predictor.py --sport cricket --gender male --cricket-task limited --predict Bangladesh India --fmt ODI --venue "Shere Bangla National Stadium" --city Mirpur
+
+For women's cricket, use --gender female.
+For men's Tests, use --cricket-task test --fmt Test.
+
+Football example:
+
+    python sports_predictor.py --sport football --gender female --predict Bangladesh Nepal --fmt regional
+
+Football formats: friendly, qualifier, regional, major.
+Use --home only for football when the first team is the home side.
+Football --venue represents the country recorded in the source.
+
+Cricket home conditions come from reviewed venue/city mappings.
+Unmapped locations remain unknown. Each new cricket model stores its
+mapping snapshot. These labels describe local conditions, not the
+designated host of an overseas series.
+
+The five saved models are pre-toss models. Post-toss models require
+separate training with --use-toss. Their predictions also require
+--toss-winner TEAM and --toss-decision bat or field.
+
+## Chronological safeguards
+
+- Features precede the corresponding result update.
+- Only results completed before the prediction day enter rating state.
+- Same-day matches cannot use one another's results.
+- Training and validation labels must finish before their fitting cutoff.
+- Neutral evaluation and prediction use the same team-order averaging.
+- Model selection uses validation, not test performance.
+- Invalid formats, identical teams and incomplete toss inputs are rejected.
+
+Timing, boundary, feature and saved-model checks passed during repair.
+These checks do not prove the absence of every possible leakage path.
+
+## Recorded retrospective results
+
+Repair runs: 23 October 2026.
+
+| Task | Selected model | Test matches | Accuracy | Log loss |
+|---|---|---:|---:|---:|
+| Men's ODI/T20I with location | Logistic regression | 1211 | 71.02% | 0.5474 |
+| Women's ODI/T20I with location | Logistic regression | 918 | 76.91% | 0.4864 |
+| Men's Tests with location | XGBoost | 60 | 65.00% | 0.8615 |
+| Men's football | XGBoost | 3034 | 60.51% | 0.8641 |
+| Women's football | XGBoost | 1938 | 66.77% | 0.7862 |
+
+Cricket tests start in 2025; football tests start in 2024.
+
+The men's Test validation log loss worsened from 0.9386 to 0.9439
+after location changes. Location support has not demonstrated a
+validation improvement for that task.
+
+Bangladesh-only test samples are small: 55 men's limited-overs matches,
+48 women's limited-overs matches, 11 men's Tests, 21 men's football
+matches and 20 women's football matches.
+
+These test results have been inspected during development. Evaluate
+future completed matches prospectively with frozen modelling rules.
+
+## Saved models
+
+- model_cricket_male_limited_pretoss.pkl
+- model_cricket_female_limited_pretoss.pkl
+- model_cricket_male_test_pretoss.pkl
+- model_football_male.pkl
+- model_football_female.pkl
+
+Completed-result cutoffs:
+- Limited-overs cricket: 14 October 2026.
+- Men's Tests: 13 October 2026.
+- Men's football: 6 October 2026.
+- Women's football: 13 October 2026.
+
+A .pkl file stores model data; it is not a terminal command.
+Load only trusted model files through the Python script.
+
+## Data and limitations
+
+Cricket: https://cricsheet.org/downloads/
+Identifiers: https://cricsheet.org/register/
+Coverage: https://cricsheet.org/coverage/
+Licensing: https://cricsheet.org/licensing/
+Men's football: https://github.com/martj42/international_results
+Women's football: https://github.com/martj42/womens-international-results
+
+Cricsheet has coverage gaps and withheld matches. Women's football
+coverage is incomplete. This project does not contain every match
+ever played or guarantee complete coverage through today.
+
+The partial location mapping has 36 verified venue/city combinations,
+covering 413 of 854 Bangladesh records and 1558 of 9943 total records
+in the venue audit. Those totals include outcomes excluded from training.
+
+Cricsheet offers BPL data, but club prediction is not implemented here.
+Do not mix club wins into national-team rating pools.
+
+Remaining improvements: expand verified venues, add historical player
+features, assess calibration and rolling validation, and preserve
+immutable source snapshots. Retain source attribution and license notices.
+No particular accuracy increase is guaranteed.
