@@ -149,3 +149,6 @@ Remaining improvements: expand verified venues, add historical player
 features, assess calibration and rolling validation, and preserve
 immutable source snapshots. Retain source attribution and license notices.
 No particular accuracy increase is guaranteed.
+
+## Acknowledgements
+Inspired by two tennis-prediction videos (including the creator's correction about Elo data leakage). Data by Cricsheet and martj42.
